@@ -451,15 +451,6 @@ with tab5:
 # ---------------------------------------------------------
 with tab6:
     st.subheader("⚙️ Live Big Data Pipeline Operations")
-    
-    st.markdown("""
-    <div class="info-box">
-        💡 <strong>What is this tab?</strong><br>
-        This is your <strong>Live Demonstration Panel</strong> for evaluators and project reviews.<br>
-        • <strong>Step 1 (Kafka Producer):</strong> Ingests raw scraped job postings row-by-row, standardizes schemas, and pushes real-time JSON events into the Kafka streaming topic <code>raw_job_postings</code>.<br>
-        • <strong>Step 2 (PySpark Engine):</strong> Initializes Apache Spark, consumes the raw Kafka stream, filters Indian locations, deduplicates cross-portal postings, extracts technical skills via NLP, and rebuilds the analytical Data Warehouse.
-    </div>
-    """, unsafe_allow_html=True)
 
     col_b1, col_b2 = st.columns(2)
 
