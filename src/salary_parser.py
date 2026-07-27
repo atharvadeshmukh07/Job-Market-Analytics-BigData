@@ -17,12 +17,18 @@ def parse_salary_to_lpa(raw_salary, default_usd_to_inr=85.0):
     is_usd = '$' in raw_salary or 'usd' in text
     multiplier_currency = (default_usd_to_inr / 100000.0) if is_usd else 1.0
 
-    # Pattern 1: X - Y Lacs / LPA / PA (e.g., 5-10 Lacs PA, 3.5 - 6 LPA)
+    # Pattern 1: X - Y Lacs / LPA / PA (e.g., 5-10 Lacs PA, 80,000 - 1 Lacs PA)
     match_lpa_range = re.search(r'([\d\.]+)\s*[\-\–\to]+\s*([\d\.]+)\s*(?:lacs|lakhs|lpa|lac)', text)
     if match_lpa_range:
         low = float(match_lpa_range.group(1))
         high = float(match_lpa_range.group(2))
+        if low > 100.0:
+            low = low / 100000.0
+        if high > 100.0:
+            high = high / 100000.0
         avg = round((low + high) / 2.0, 2)
+        if avg < 1.0:
+            return None, None, None
         return round(low, 2), round(high, 2), avg
 
     # Pattern 2: Single LPA value (e.g., 8 LPA, 12 Lacs)
@@ -59,6 +65,15 @@ def parse_salary_to_lpa(raw_salary, default_usd_to_inr=85.0):
             low = round(min(lpa1, lpa2), 2)
             high = round(max(lpa1, lpa2), 2)
             avg = round((low + high) / 2.0, 2)
+            
+            # Apply realistic bounds filtering (1.5 LPA to 80.0 LPA for Indian roles)
+            if avg > 80.0:
+                avg = 80.0
+                low = min(low, 80.0)
+                high = min(high, 80.0)
+            if avg < 1.0:
+                return None, None, None
+
             return low, high, avg
         except ValueError:
             pass
@@ -79,6 +94,11 @@ def parse_salary_to_lpa(raw_salary, default_usd_to_inr=85.0):
                 lpa = val / 100000.0 if val > 100 else val
 
             lpa = round(lpa, 2)
+            if lpa > 80.0:
+                lpa = 80.0
+            if lpa < 1.0:
+                return None, None, None
+
             return lpa, lpa, lpa
         except ValueError:
             pass
