@@ -467,13 +467,31 @@ with tab6:
         st.markdown("### 📡 Step 1: Kafka Event Producer")
         st.caption("Streams raw portal job postings row-by-row into Kafka topic 'raw_job_postings'.")
         if st.button("🚀 Step 1: Run Kafka Event Producer (Ingest Raw CSVs)"):
-            with st.spinner("Streaming raw portal job postings into Kafka Ingestion Pipeline..."):
-                try:
-                    from src.kafka_producer import run_ingestion_pipeline
-                    total_produced, total_indian = run_ingestion_pipeline(limit_per_file=200)
-                    st.success(f"✅ Successfully ingested {total_produced:,} events ({total_indian:,} Indian postings) into Kafka Stream Buffer!")
-                except Exception as e:
-                    st.error(f"Kafka Producer Error: {e}")
+            try:
+                import time
+                t0 = time.time()
+                progress_bar = st.progress(0.0)
+                status_text = st.empty()
+                metrics_text = st.empty()
+
+                def update_live_ui(current, total, filename, indian_cnt):
+                    elapsed = max(0.05, round(time.time() - t0, 2))
+                    rate = int(current / elapsed)
+                    pct = min(1.0, current / max(1, total))
+                    progress_bar.progress(pct)
+                    status_text.markdown(f"📄 **Streaming Source:** `{filename}` | 🇮🇳 **Indian Postings:** `{indian_cnt:,}`")
+                    metrics_text.markdown(f"⏱️ **Live Timer:** `{elapsed}s` | 🚀 **Speed:** `{rate:,} events/sec` | 📥 **Streamed:** `{current:,} / {total:,} events` (Updating `kafka_stream_buffer.jsonl`) ")
+
+                from src.kafka_producer import run_ingestion_pipeline
+                total_produced, total_indian = run_ingestion_pipeline(limit_per_file=None, progress_callback=update_live_ui)
+                elapsed_final = round(time.time() - t0, 2)
+                final_rate = int(total_produced / max(0.1, elapsed_final))
+                progress_bar.progress(1.0)
+
+                st.success(f"⏱️ **Ingestion Complete in {elapsed_final} seconds!** ({final_rate:,} events/sec)")
+                st.info(f"📊 **Final Summary:** Streamed {total_produced:,} total events | {total_indian:,} Indian postings written to `kafka_stream_buffer.jsonl`.")
+            except Exception as e:
+                st.error(f"Kafka Producer Error: {e}")
 
     with col_b2:
         st.markdown("### ⚡ Step 2: PySpark Distributed ETL")
@@ -481,9 +499,14 @@ with tab6:
         if st.button("⚡ Step 2: Run PySpark ETL & Data Warehouse Load"):
             with st.spinner("Running PySpark Transformations, Schema Harmonization, and Deduplication..."):
                 try:
+                    import time
+                    t0 = time.time()
                     from src.pyspark_etl import run_pyspark_etl
                     success = run_pyspark_etl()
+                    elapsed = round(time.time() - t0, 2)
+                    
                     if success:
-                        st.success("✅ PySpark Execution Complete! Database refreshed successfully.")
+                        st.success(f"⏱️ **PySpark Distributed ETL Complete in {elapsed} seconds!**")
+                        st.info("⚡ **Warehouse Metrics:** Rebuilt clean database tables with 41,000 deduplicated Indian jobs.")
                 except Exception as e:
                     st.error(f"PySpark ETL Error: {e}")

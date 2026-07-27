@@ -54,7 +54,7 @@ def publish_job_event(producer, event, buffer_fp=None):
         buffer_fp.write(json.dumps(event, ensure_ascii=False) + "\n")
     return True
 
-def run_ingestion_pipeline(limit_per_file=None):
+def run_ingestion_pipeline(limit_per_file=None, progress_callback=None):
     print("==================================================")
     print("   BIG DATA INGESTION PIPELINE (KAFKA PRODUCER)   ")
     print("==================================================")
@@ -71,6 +71,7 @@ def run_ingestion_pipeline(limit_per_file=None):
 
     total_produced = 0
     total_indian = 0
+    estimated_total = 92762 if not limit_per_file else (limit_per_file * len(files_config))
 
     for fname, norm_func in files_config:
         if not os.path.exists(fname):
@@ -91,6 +92,9 @@ def run_ingestion_pipeline(limit_per_file=None):
                 file_count += 1
                 if event.get('is_indian_location'):
                     total_indian += 1
+
+                if progress_callback and (total_produced % 300 == 0 or file_count == len(df)):
+                    progress_callback(total_produced, estimated_total, fname, total_indian)
 
             print(f"  --> Ingested {file_count} records from {fname}")
         except Exception as e:
