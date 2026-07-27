@@ -1,10 +1,12 @@
 import sqlite3
 import pandas as pd
 import numpy as np
+import time
 
 try:
-    from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
-    from sklearn.metrics import mean_absolute_error, r2_score, accuracy_score, classification_report
+    from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+    from sklearn.linear_model import Ridge
+    from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
     from sklearn.model_selection import train_test_split
     SKLEARN_AVAILABLE = True
 except ImportError:
@@ -12,18 +14,15 @@ except ImportError:
 
 DB_NAME = "job_analytics.db"
 
-def train_and_evaluate_ml_models():
+def train_and_compare_ml_models():
     """
-    Trains and evaluates two Machine Learning models:
-    1. Salary Regression Model (Predicts Salary Package in INR LPA)
-    2. Skill Demand Classifier (Predicts Skill Demand Tier: High / Moderate / Niche)
+    Trains and compares 3 Machine Learning algorithms side-by-side for Viva Defense:
+    1. Random Forest Regressor
+    2. Gradient Boosting Regressor
+    3. Ridge Linear Regression
     """
-    print("==================================================")
-    print("      MACHINE LEARNING MODEL EVALUATION SUITE      ")
-    print("==================================================")
-
     if not SKLEARN_AVAILABLE:
-        print("[ML Error] scikit-learn is missing. Cannot train model.")
+        print("[ML Error] scikit-learn missing. Cannot train models.")
         return None
 
     conn = sqlite3.connect(DB_NAME)
@@ -33,59 +32,62 @@ def train_and_evaluate_ml_models():
     )
     conn.close()
 
-    if len(df) < 10:
-        print(f"[ML Warning] Not enough salary records ({len(df)} rows) to train ML model.")
+    if len(df) < 20:
         return None
 
     # Feature Engineering
     df['is_remote_num'] = df['is_remote'].astype(int)
-    
-    # Feature matrix (X) and target (y)
     X = pd.get_dummies(df[['clean_job_title', 'clean_city', 'is_remote_num']], drop_first=True)
-    y_salary = df['avg_salary_lpa']
+    y = df['avg_salary_lpa']
 
-    # 1. Train Salary Regression Model
-    X_train, X_test, y_train, y_test = train_test_split(X, y_salary, test_size=0.2, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    reg_model = RandomForestRegressor(n_estimators=100, max_depth=12, random_state=42)
-    reg_model.fit(X_train, y_train)
+    models = {
+        'Random Forest Regressor': RandomForestRegressor(n_estimators=100, max_depth=12, random_state=42),
+        'Gradient Boosting Regressor': GradientBoostingRegressor(n_estimators=100, max_depth=6, random_state=42),
+        'Ridge Regression': Ridge(alpha=1.0)
+    }
 
-    y_pred = reg_model.predict(X_test)
-    mae = mean_absolute_error(y_test, y_pred)
-    r2 = r2_score(y_test, y_pred)
+    comparison_results = []
+    trained_models = {}
 
-    print("\n--- SALARY REGRESSION MODEL METRICS ---")
-    print(f"  * Total Dataset Records: {len(df):,}")
-    print(f"  * Mean Absolute Error (MAE): +/- {mae:.2f} LPA")
-    print(f"  * R2 Score (Variance Explained): {r2:.2f} ({max(0, r2*100):.1f}%)")
+    for name, model in models.items():
+        t0 = time.time()
+        model.fit(X_train, y_train)
+        fit_time = round((time.time() - t0) * 1000, 2)
+        
+        y_pred = model.predict(X_test)
+        mae = mean_absolute_error(y_test, y_pred)
+        rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+        r2 = r2_score(y_test, y_pred)
 
-    # Feature Importances
+        comparison_results.append({
+            'Algorithm': name,
+            'MAE (LPA)': round(mae, 2),
+            'RMSE (LPA)': round(rmse, 2),
+            'R² Score': round(r2, 2),
+            'Accuracy %': f"{max(0, round(r2*100, 1))}%",
+            'Training Time (ms)': fit_time
+        })
+        trained_models[name] = model
+
+    df_results = pd.DataFrame(comparison_results)
+    
+    # Feature Importances from Random Forest
+    rf_model = trained_models['Random Forest Regressor']
     importances = pd.DataFrame({
         'Feature': X.columns,
-        'Importance': reg_model.feature_importances_
+        'Importance': rf_model.feature_importances_
     }).sort_values('Importance', ascending=False)
-    
-    print("\n--- Top 5 Features Driving Salary Predictions ---")
-    for idx, row in importances.head(5).iterrows():
-        print(f"  - {row['Feature']}: {row['Importance']*100:.2f}% impact")
 
-    metrics_summary = {
-        'total_records': len(df),
-        'mae_lpa': round(mae, 2),
-        'r2_score': round(r2, 2),
+    return {
+        'comparison_table': df_results,
         'feature_importances': importances,
-        'reg_model': reg_model,
+        'total_records': len(df),
         'feature_cols': list(X.columns)
     }
 
-    return metrics_summary
-
-
 def predict_skill_demand_classification():
-    """
-    Classifies skills into Demand Tiers (High Demand / Moderate Demand / Emerging)
-    and computes market metrics.
-    """
     conn = sqlite3.connect(DB_NAME)
     df_skills = pd.read_sql_query(
         "SELECT skill_name, COUNT(*) as job_count, AVG(avg_salary_lpa) as avg_lpa FROM fact_job_skills GROUP BY skill_name ORDER BY job_count DESC",
@@ -113,7 +115,6 @@ def predict_skill_demand_classification():
 
 
 if __name__ == "__main__":
-    train_and_evaluate_ml_models()
-    df_trends = predict_skill_demand_classification()
-    print("\n🔥 Skill Demand Classification Sample:")
-    print(df_trends.head(10))
+    res = train_and_compare_ml_models()
+    if res:
+        print(res['comparison_table'])
