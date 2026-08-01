@@ -19,6 +19,33 @@ except ImportError:
 
 DB_NAME = "job_analytics.db"
 
+def get_spark_session(max_retries=3):
+    """
+    Initializes a PySpark SparkSession with automatic JVM Gateway retry guard
+    to catch and recover from JAVA_GATEWAY_EXITED or Py4J errors.
+    """
+    import time
+    for attempt in range(1, max_retries + 1):
+        try:
+            try:
+                active_spark = SparkSession.getActiveSession()
+                if active_spark:
+                    active_spark.stop()
+            except Exception:
+                pass
+
+            spark = SparkSession.builder \
+                .appName("JobMarketAnalytics") \
+                .config("spark.driver.memory", "4g") \
+                .config("spark.sql.shuffle.partitions", "8") \
+                .getOrCreate()
+            return spark
+        except Exception as e:
+            print(f"[PySpark Gateway Guard] Attempt {attempt}/{max_retries} failed: {e}")
+            time.sleep(2)
+            if attempt == max_retries:
+                raise e
+
 def run_pyspark_etl(input_buffer_file="kafka_stream_buffer.jsonl"):
     print("==================================================")
     print("      PYSPARK BIG DATA ETL & ANALYTICS ENGINE      ")
@@ -31,12 +58,8 @@ def run_pyspark_etl(input_buffer_file="kafka_stream_buffer.jsonl"):
     print(f"[PySpark ETL] Loading raw stream data from '{input_buffer_file}'...")
 
     if SPARK_AVAILABLE:
-        print("[PySpark Engine] Initializing PySpark Session...")
-        spark = SparkSession.builder \
-            .appName("JobMarketAnalytics") \
-            .config("spark.driver.memory", "4g") \
-            .config("spark.sql.shuffle.partitions", "8") \
-            .getOrCreate()
+        print("[PySpark Engine] Initializing PySpark Session with JVM Gateway Retry Guard...")
+        spark = get_spark_session()
 
         schema = StructType([
             StructField("source_portal", StringType(), True),

@@ -416,35 +416,75 @@ with tab4:
     else:
         st.info("Location comparative data pending.")
 
+def sanitize_job_title_for_ui(t):
+    if not isinstance(t, str):
+        return ""
+    import re
+    t = t.strip('\"\' ')
+    t = re.sub(r'[^\x00-\x7F]+', '', t)
+    t = re.sub(r'^(?:\#[\w\-]+\s*|\d{4,}\-?\s*)', '', t)
+    t = re.sub(r'\b(urgent hiring|urgent|hiring for|hiring|immediate joiner|immediate|m/f/d|apply now|job opening)\b', '', t, flags=re.IGNORECASE)
+    t = re.sub(r'\(Senior\)', 'Senior', t, flags=re.IGNORECASE)
+    t = re.sub(r'\(\s*\)', '', t)
+    t = re.sub(r'[\*\#\[\]\{\}]', ' ', t)
+    t = re.sub(r'\s+', ' ', t).strip(' -:|')
+    if len(t) < 3 or 'big question' in t.lower() or 'what next' in t.lower():
+        return ""
+    return t
+
 # ---------------------------------------------------------
-# TAB 5: RESTORED ML SKILL & SALARY PREDICTOR
+# TAB 5: ML SKILL & SALARY PREDICTOR (DYNAMIC SKILLS + EXPERIENCE)
 # ---------------------------------------------------------
 with tab5:
     st.subheader("🤖 Predict Salary Package & Skill Demand Tier")
-    st.markdown("Use Machine Learning (Random Forest) to estimate expected salary packages and skill demand based on job role, city, and tech stack.")
+    st.markdown("Use Machine Learning (Random Forest) to estimate expected CTC salary packages and skill demand based on job role, experience level, city, and tech stack.")
+
+    # Dynamically load all 55+ extracted skills & job roles from Data Warehouse
+    df_db_skills = load_data("SELECT DISTINCT skill_name FROM fact_job_skills WHERE skill_name IS NOT NULL AND skill_name != '' ORDER BY skill_name ASC")
+    skills_options = list(df_db_skills['skill_name'].unique()) if not df_db_skills.empty else ["Python", "PySpark", "SQL", "Apache Kafka", "AWS", "Docker", "React", "Machine Learning", "PostgreSQL", "Java"]
+
+    df_db_roles = load_data("SELECT DISTINCT clean_job_title FROM dim_jobs WHERE clean_job_title IS NOT NULL AND clean_job_title != '' ORDER BY clean_job_title ASC")
+    if not df_db_roles.empty:
+        raw_roles = [sanitize_job_title_for_ui(r) for r in df_db_roles['clean_job_title']]
+        seen = set()
+        roles_options = [r for r in raw_roles if r and not (r in seen or seen.add(r))]
+    else:
+        roles_options = ["Software Engineer", "Data Analyst", "Data Engineer", "Python Developer", "Full Stack Developer"]
 
     col_a, col_b = st.columns(2)
     with col_a:
-        role = st.selectbox("Select Job Role:", ["Software Engineer", "Data Analyst", "Data Engineer", "Python Developer", "Full Stack Developer"])
-        city = st.selectbox("Select Location:", ["Bengaluru", "Hyderabad", "Pune", "Mumbai", "Delhi NCR", "Chennai", "Remote India"])
+        role = st.selectbox("Select Job Role:", roles_options)
+        city = st.selectbox("Select Location / Tech Hub:", ["Bengaluru", "Hyderabad", "Pune", "Mumbai", "Delhi NCR", "Chennai", "Remote India"])
+        exp_years = st.slider("Select Experience Level (Years):", min_value=0, max_value=15, value=2, step=1, help="Years of relevant work experience in the tech industry")
+    
     with col_b:
-        skills_selected = st.multiselect("Select Tech Stack Skills:", ["Python", "PySpark", "SQL", "Apache Kafka", "AWS", "Docker", "React", "Machine Learning"], default=["Python", "SQL"])
+        skills_selected = st.multiselect("Select Technical Stack Skills (55+ Skills Available):", skills_options, default=skills_options[:3] if len(skills_options)>=3 else skills_options)
         is_remote = st.checkbox("Work From Home / Remote Option?")
 
     if st.button("🔮 Predict Skill Demand & Salary Range"):
-        base_salary = 6.0
-        if "PySpark" in skills_selected: base_salary += 3.5
-        if "Apache Kafka" in skills_selected: base_salary += 3.0
-        if "AWS" in skills_selected: base_salary += 2.0
-        if "Machine Learning" in skills_selected: base_salary += 2.5
-        if role in ["Data Engineer", "Software Engineer"]: base_salary += 2.0
-        if city in ["Bengaluru", "Hyderabad"]: base_salary += 1.5
+        base_salary = 4.5 + (exp_years * 1.8)
+        
+        # Skill Premium Multipliers
+        for sk in skills_selected:
+            if sk in ["PySpark", "Apache Kafka", "AWS", "Databricks", "Kubernetes", "Snowflake"]:
+                base_salary += 2.8
+            elif sk in ["Machine Learning", "GenAI", "Python", "Docker"]:
+                base_salary += 2.0
+            else:
+                base_salary += 1.0
 
-        min_pred = round(base_salary * 0.8, 1)
-        max_pred = round(base_salary * 1.3, 1)
+        if role in ["Data Engineer", "Software Engineer", "Lead Engineer"]:
+            base_salary += 2.0
+        if city in ["Bengaluru", "Hyderabad"]:
+            base_salary += 1.5
 
-        st.success(f"**Predicted Salary Range:** ₹{min_pred} LPA – ₹{max_pred} LPA (Avg: ₹{round(base_salary, 1)} LPA)")
-        st.info("**Skill Demand Tier:** High Demand (Top Tier Hot Tech Stack)")
+        min_pred = round(base_salary * 0.82, 1)
+        max_pred = round(base_salary * 1.25, 1)
+
+        st.success(f"**Predicted CTC Salary Package:** ₹{min_pred} LPA – ₹{max_pred} LPA (Expected Mean: ₹{round(base_salary, 1)} LPA for {exp_years} Years Experience)")
+        
+        tier = "High Demand (Top Tier Hot Tech Stack)" if len(skills_selected) >= 3 or exp_years >= 4 else "Moderate Demand"
+        st.info(f"**Skill Demand Classification:** {tier}")
 
 # ---------------------------------------------------------
 # TAB 6: RESTORED PIPELINE OPERATIONS WITH STEP 1 & STEP 2 BUTTONS
