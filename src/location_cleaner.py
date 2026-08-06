@@ -107,6 +107,91 @@ def clean_and_validate_location(raw_loc, text_fallback=""):
     return False, "Non-India", "Non-India", False
 
 
+CANONICAL_ROLES = [
+    ("Machine Learning Engineer", [r'\bml\b', r'machine learning', r'ai/ml', r'ai engineer', r'ai developer', r'deep learning', r'llm', r'genai', r'artificial intelligence', r'computer vision', r'nlp']),
+    ("Data Engineer", [r'data engineer', r'pyspark', r'big data', r'etl developer', r'etl engineer', r'data pipeline', r'databricks engineer']),
+    ("Data Scientist", [r'data scientist', r'data science', r'statistical analyst']),
+    ("Data Analyst", [r'data analyst', r'business analyst', r'data analytics', r'bi analyst', r'power bi analyst', r'tableau analyst']),
+    ("DevOps Engineer", [r'devops', r'site reliability', r'sre\b', r'ci/cd', r'infrastructure engineer', r'platform engineer']),
+    ("Cloud Architect", [r'cloud architect', r'aws architect', r'azure architect', r'cloud engineer', r'solutions architect']),
+    ("Full Stack Developer", [r'full stack', r'fullstack', r'mean stack', r'mern stack']),
+    ("Frontend Engineer", [r'frontend', r'front end', r'react developer', r'angular developer', r'vue developer', r'ui developer']),
+    ("Backend Engineer", [r'backend', r'back end', r'python backend', r'java backend', r'node\.js developer', r'spring boot']),
+    ("Software Engineer", [r'software engineer', r'software developer', r'sde', r'swe\b', r'python developer', r'java developer', r'c\+\+ developer', r'member of technical staff']),
+    ("Product Manager", [r'product manager', r'technical product manager', r'product owner']),
+    ("QA / Test Engineer", [r'qa engineer', r'test engineer', r'automation tester', r'sdet'])
+]
+
+def normalize_canonical_job_title(raw_title):
+    if not isinstance(raw_title, str) or not raw_title.strip():
+        return "Software Engineer"
+    
+    t = raw_title.lower()
+    t = re.sub(r'[^\x00-\x7F]+', '', t)
+    
+    for canonical_name, patterns in CANONICAL_ROLES:
+        for p in patterns:
+            if re.search(p, t):
+                return canonical_name
+
+    return "Software Engineer"
+
+
+def sanitize_job_title_for_ui(t):
+    if not isinstance(t, str):
+        return "Software Engineer"
+    import re
+    
+    # 1. Strip quotes and decorative symbols/punctuation
+    t = t.strip('\"\' ')
+    t = re.sub(r'[^\x00-\x7F]+', '', t) # remove emojis/non-ascii
+    t = re.sub(r'[\!\*\#\[\]\{\}\=\~]', ' ', t)
+    
+    # 2. Remove leading/trailing tracking IDs and job codes like #2026-D-0042 or 3562871- or - 1357
+    t = re.sub(r'^(?:\#[\w\-]+\s*|\d{4,}\-?\s*)', '', t)
+    t = re.sub(r'[\-\|\:\#]\s*\d{3,}\b', '', t)
+    t = re.sub(r'\b\d{5,}\b', '', t)
+
+    # 3. Remove walk-in dates and event information
+    t = re.sub(r'\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|july?|aug|sep|oct|nov|dec)[a-z]*\b.*', '', t, flags=re.IGNORECASE)
+    t = re.sub(r'\b(walkin|walk-in|walk in|job drive|hiring drive|mega drive)\b.*', '', t, flags=re.IGNORECASE)
+
+    # 4. Remove experience text (e.g. 'with 5-8 years Exp', '5-8 Yrs', 'Exp: 2-4 yrs')
+    t = re.sub(r'\b(?:with\s+)?\d+\s*[\-\+]\s*\d+\s*(?:years?|yrs?)(?:\s*exp(?:erience)?)?\b', '', t, flags=re.IGNORECASE)
+    t = re.sub(r'\b(?:with\s+)?\d+\+?\s*(?:years?|yrs?)(?:\s*exp(?:erience)?)?\b', '', t, flags=re.IGNORECASE)
+    t = re.sub(r'\bexp(?:erience)?\s*[\:\-]?\s*\d+.*', '', t, flags=re.IGNORECASE)
+
+    # 5. Remove shift information
+    t = re.sub(r'\((?:night|day|us|uk|rotational|flexible)\s*shift\)', '', t, flags=re.IGNORECASE)
+    t = re.sub(r'\b(?:night|day|us|uk|rotational)\s+shift\b', '', t, flags=re.IGNORECASE)
+
+    # 6. Remove noise hiring keywords
+    t = re.sub(r'\b(urgent hiring|urgent|hiring for|hiring|immediate joiner|immediate|m/f/d|apply now|job opening)\b', '', t, flags=re.IGNORECASE)
+
+    # 7. Remove appended location names
+    t = re.sub(r'[\-\|\,]\s*(?:Bengaluru|Bangalore|Hyderabad|Pune|Mumbai|Delhi|Noida|Gurgaon|Gurugram|Chennai|Kolkata|Ahmedabad|India|Remote).*$', '', t, flags=re.IGNORECASE)
+
+    # 8. Standardize abbreviations
+    t = re.sub(r'\bSr\.\s*', 'Senior ', t, flags=re.IGNORECASE)
+    t = re.sub(r'\bSr\b', 'Senior', t, flags=re.IGNORECASE)
+    t = re.sub(r'\bJr\.\s*', 'Junior ', t, flags=re.IGNORECASE)
+    t = re.sub(r'\bJr\b', 'Junior', t, flags=re.IGNORECASE)
+    t = re.sub(r'\bDevelopers\b', 'Developer', t, flags=re.IGNORECASE)
+    t = re.sub(r'\bEngineers\b', 'Engineer', t, flags=re.IGNORECASE)
+    t = re.sub(r'\bAnalysts\b', 'Analyst', t, flags=re.IGNORECASE)
+    t = re.sub(r'\bUs\b', 'US', t)
+    t = re.sub(r'\bIt\b', 'IT', t)
+    t = re.sub(r'\bAi\b', 'AI', t)
+    t = re.sub(r'\bMl\b', 'ML', t)
+
+    # Clean whitespace and punctuation
+    t = re.sub(r'\(\s*\)', '', t)
+    t = re.sub(r'\s+', ' ', t).strip(' -:|,.')
+
+    if len(t) < 3 or 'big question' in t.lower() or 'what next' in t.lower():
+        return "Software Engineer"
+    return t.title()
+
 if __name__ == "__main__":
     test_locs = [
         "Hyderabad, Telangana",
@@ -119,3 +204,4 @@ if __name__ == "__main__":
     ]
     for loc in test_locs:
         print(f"'{loc}' -> {clean_and_validate_location(loc)}")
+

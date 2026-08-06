@@ -5,18 +5,13 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import modular helper cleaners
-from src.location_cleaner import clean_and_validate_location
+from src.location_cleaner import clean_and_validate_location, normalize_canonical_job_title
 from src.salary_parser import parse_salary_to_lpa
 from src.skill_extractor import extract_skills_from_text
 
 def clean_title(title):
-    """Strips common junk like '\\n- job post', '- Hyderabad', etc."""
-    if not isinstance(title, str):
-        return "Software Engineer"
-    t = title.replace('\n- job post', '').strip()
-    # Strip trailing '- Location' or '- City' in titles like 'Python Developer-Hyderabad'
-    t = re.sub(r'[\-\|]\s*(?:Hyderabad|Bengaluru|Bangalore|Pune|Mumbai|Noida|Gurgaon|Chennai|Delhi).*$', '', t, flags=re.IGNORECASE).strip()
-    return t if t else title.strip()
+    """Normalizes raw title into a standard canonical job role."""
+    return normalize_canonical_job_title(title)
 
 def normalize_indeed_row(row):
     title = str(row.get('Title', ''))

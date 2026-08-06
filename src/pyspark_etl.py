@@ -90,8 +90,8 @@ def run_pyspark_etl(input_buffer_file="kafka_stream_buffer.jsonl"):
         india_count = df_india.count()
         print(f"  --> Filtered Indian job postings: {india_count} (Dropped {raw_count - india_count} non-Indian/foreign records)")
 
-        # Transformation 2: Deduplication across platforms
-        df_clean = df_india.dropDuplicates(["clean_job_title", "company", "clean_city"])
+        # Transformation 2: Deduplication across platforms (Deduplicate by raw_job_title + company + city)
+        df_clean = df_india.dropDuplicates(["raw_job_title", "company", "clean_city"])
         clean_count = df_clean.count()
         print(f"  --> Deduplicated clean jobs: {clean_count} (Removed {india_count - clean_count} duplicate postings)")
 
@@ -114,9 +114,14 @@ def run_pyspark_etl(input_buffer_file="kafka_stream_buffer.jsonl"):
         india_count = len(pdf_india)
         print(f"  --> Filtered Indian job postings: {india_count}")
 
-        pdf_clean = pdf_india.drop_duplicates(subset=['clean_job_title', 'company', 'clean_city'])
+        pdf_clean = pdf_india.drop_duplicates(subset=['raw_job_title', 'company', 'clean_city'])
         clean_count = len(pdf_clean)
         print(f"  --> Deduplicated clean jobs: {clean_count}")
+
+    from src.location_cleaner import sanitize_job_title_for_ui
+    
+    # Apply clean title sanitizer to produce thousands of clean role titles
+    pdf_clean['clean_job_title'] = pdf_clean['raw_job_title'].apply(sanitize_job_title_for_ui)
 
     # Prepare PostgreSQL / SQLite Analytical Tables
     print("\n[Data Warehouse] Saving clean analytical tables to SQLite/PostgreSQL Database...")
