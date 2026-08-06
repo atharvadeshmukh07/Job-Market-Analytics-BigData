@@ -5,6 +5,10 @@ __pycache__/
 
 # Data files & Storage
 *.csv
+!indeed_jobs.csv
+!jobs.csv
+!master.csv
+!"naukri_live_jobs (2).csv"
 *.db
 *.sqlite
 *.sqlite3
