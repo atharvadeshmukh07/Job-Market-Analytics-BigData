@@ -57,49 +57,55 @@ def run_pyspark_etl(input_buffer_file="kafka_stream_buffer.jsonl"):
 
     print(f"[PySpark ETL] Loading raw stream data from '{input_buffer_file}'...")
 
+    use_pyspark = False
     if SPARK_AVAILABLE:
-        print("[PySpark Engine] Initializing PySpark Session with JVM Gateway Retry Guard...")
-        spark = get_spark_session()
+        try:
+            print("[PySpark Engine] Initializing PySpark Session with JVM Gateway Retry Guard...")
+            spark = get_spark_session()
 
-        schema = StructType([
-            StructField("source_portal", StringType(), True),
-            StructField("raw_job_title", StringType(), True),
-            StructField("clean_job_title", StringType(), True),
-            StructField("company", StringType(), True),
-            StructField("raw_location", StringType(), True),
-            StructField("clean_city", StringType(), True),
-            StructField("clean_state", StringType(), True),
-            StructField("is_indian_location", BooleanType(), True),
-            StructField("is_remote", BooleanType(), True),
-            StructField("raw_salary", StringType(), True),
-            StructField("min_salary_lpa", DoubleType(), True),
-            StructField("max_salary_lpa", DoubleType(), True),
-            StructField("avg_salary_lpa", DoubleType(), True),
-            StructField("job_description", StringType(), True),
-            StructField("extracted_skills", ArrayType(StringType()), True),
-            StructField("job_url", StringType(), True)
-        ])
+            schema = StructType([
+                StructField("source_portal", StringType(), True),
+                StructField("raw_job_title", StringType(), True),
+                StructField("clean_job_title", StringType(), True),
+                StructField("company", StringType(), True),
+                StructField("raw_location", StringType(), True),
+                StructField("clean_city", StringType(), True),
+                StructField("clean_state", StringType(), True),
+                StructField("is_indian_location", BooleanType(), True),
+                StructField("is_remote", BooleanType(), True),
+                StructField("raw_salary", StringType(), True),
+                StructField("min_salary_lpa", DoubleType(), True),
+                StructField("max_salary_lpa", DoubleType(), True),
+                StructField("avg_salary_lpa", DoubleType(), True),
+                StructField("job_description", StringType(), True),
+                StructField("extracted_skills", ArrayType(StringType()), True),
+                StructField("job_url", StringType(), True)
+            ])
 
-        # Read JSON into Spark DataFrame
-        df_raw = spark.read.schema(schema).json(input_buffer_file)
-        raw_count = df_raw.count()
-        print(f"  --> Total raw stream events ingested: {raw_count}")
+            # Read JSON into Spark DataFrame
+            df_raw = spark.read.schema(schema).json(input_buffer_file)
+            raw_count = df_raw.count()
+            print(f"  --> Total raw stream events ingested: {raw_count}")
 
-        # Transformation 1: Filter strictly for Indian Cities / States
-        df_india = df_raw.filter(F.col("is_indian_location") == True)
-        india_count = df_india.count()
-        print(f"  --> Filtered Indian job postings: {india_count} (Dropped {raw_count - india_count} non-Indian/foreign records)")
+            # Transformation 1: Filter strictly for Indian Cities / States
+            df_india = df_raw.filter(F.col("is_indian_location") == True)
+            india_count = df_india.count()
+            print(f"  --> Filtered Indian job postings: {india_count} (Dropped {raw_count - india_count} non-Indian/foreign records)")
 
-        # Transformation 2: Deduplication across platforms (Deduplicate by raw_job_title + company + city)
-        df_clean = df_india.dropDuplicates(["raw_job_title", "company", "clean_city"])
-        clean_count = df_clean.count()
-        print(f"  --> Deduplicated clean jobs: {clean_count} (Removed {india_count - clean_count} duplicate postings)")
+            # Transformation 2: Deduplication across platforms (Deduplicate by raw_job_title + company + city)
+            df_clean = df_india.dropDuplicates(["raw_job_title", "company", "clean_city"])
+            clean_count = df_clean.count()
+            print(f"  --> Deduplicated clean jobs: {clean_count} (Removed {india_count - clean_count} duplicate postings)")
 
-        # Convert to Pandas for SQL / SQLite storage
-        pdf_clean = df_clean.toPandas()
+            # Convert to Pandas for SQL / SQLite storage
+            pdf_clean = df_clean.toPandas()
+            use_pyspark = True
+        except Exception as spark_err:
+            print(f"[PySpark Notice] PySpark JVM is not available on this environment ({spark_err}). Switching seamlessly to Pandas Big Data Ingestion Engine...")
+            use_pyspark = False
 
-    else:
-        print("[PySpark Engine] PySpark not yet imported. Using Pandas fallback for ETL processing...")
+    if not use_pyspark:
+        print("[PySpark Fallback Engine] Using Pandas Engine for Big Data ETL processing...")
         records = []
         with open(input_buffer_file, "r", encoding="utf-8") as f:
             for line in f:
