@@ -54,6 +54,9 @@ CURATED_ROLE_SKILLS = {
     "manager": ["Agile", "Scrum", "Project Management", "Jira", "Team Leadership", "Product Roadmap", "Stakeholder Management"]
 }
 
+# Alias for backward compatibility across modules
+ROLE_SKILL_MATRIX = CURATED_ROLE_SKILLS
+
 def get_curated_skills_for_role(role_title):
     if not isinstance(role_title, str):
         return ["Python", "SQL", "Git", "Docker", "PostgreSQL"]
